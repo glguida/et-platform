@@ -69,6 +69,7 @@ add_library(deviceLayer
 add_library(deviceLayer::deviceLayer ALIAS deviceLayer)
 target_compile_features(deviceLayer PUBLIC cxx_std_17)
 target_set_project_warnings(deviceLayer)
+target_compile_definitions(deviceLayer PRIVATE $<$<BOOL:${ENABLE_PCIEDRIVER}>:ENABLE_PCIEDRIVER>)
 target_compile_options(deviceLayer
     PRIVATE
         $<$<OR:$<CXX_COMPILER_ID:GNU>,$<CXX_COMPILER_ID:Clang>>:-Werror=all>
