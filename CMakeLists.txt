@@ -29,9 +29,18 @@ ThirdParty(easy_profiler https://github.com/yse/easy_profiler.git v2.1.0-66-gcc0
 ThirdParty(cereal https://github.com/USCiLab/cereal.git v1.3.2 "-DJUST_INSTALL_CEREAL=ON")
 
 #
-# Install the public headers of the linux driver.
+# Enable PCIe board support if compiling under Linux.
 #
-HostProject(et-driver "")
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    set(ENABLE_PCIEDRIVER ON)
+
+    #
+    # Install the public headers of the linux driver.
+    #
+    HostProject(et-driver "")
+    set(ET_DRIVER et-driver)
+endif()
+
 
 #
 # Common Software
@@ -72,8 +81,8 @@ DeviceProject(test-compute-kernels ""
 #
 # Runtime
 #
-HostProject(sw-sysemu "" g3log common-sw et-driver)
-HostProject(devicelayer  "" common-sw sw-sysemu)
+HostProject(sw-sysemu "" g3log common-sw)
+HostProject(devicelayer  "-DENABLE_PCIEDRIVER=${ENABLE_PCIEDRIVER}" common-sw sw-sysemu ${ET_DRIVER})
 HostProject(esperanto-tools-libs ""
             devicelayer device-api g3log cereal easy_profiler
 	    device-bootloaders device-minion-runtime
