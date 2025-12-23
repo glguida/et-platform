@@ -19,6 +19,8 @@ include(ProjectFunctions)
 file(COPY cmake/ProjectFunctions.cmake DESTINATION ${CMAKE_INSTALL_PREFIX}/lib/cmake/aifoundry-utils)
 file(COPY cmake/Findlibcap.cmake DESTINATION ${CMAKE_INSTALL_PREFIX}/lib/cmake)
 file(COPY cmake/Findgflags.cmake DESTINATION ${CMAKE_INSTALL_PREFIX}/lib/cmake)
+file(COPY cmake/Findglog.cmake DESTINATION ${CMAKE_INSTALL_PREFIX}/lib/cmake)
+file(COPY cmake/Findlz4.cmake DESTINATION ${CMAKE_INSTALL_PREFIX}/lib/cmake)
 file(COPY cmake-modules DESTINATION ${CMAKE_INSTALL_PREFIX}/lib/cmake)
 
 # External dependencies
