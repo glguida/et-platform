@@ -54,6 +54,22 @@ target_link_libraries(esperanto_flash_tool
         esperanto-flash-tool::headers
 )
 
+# MacOS requires argp-stadalone
+if(APPLE)
+    find_library(ARGP_LIBRARY
+        NAMES argp
+        PATHS
+            /usr/local/lib
+            /opt/homebrew/lib
+        NO_DEFAULT_PATHS
+        NO_CMAKE_SYSTEM_PATH
+    )
+    if(ARGP_LIBRARY)
+        target_link_libraries(esperanto_flash_tool PRIVATE ${ARGP_LIBRARY})
+    else()
+        message(FATAL_ERROR "libargp not found – install with: brew install argp-standalone")
+    endif()
+endif()
 
 ### Installation
 
