@@ -7,6 +7,12 @@ set(LFLAGS -static -nostdlib -Ttext=10000)
 
 set(OBJCOPY_CMD        ${CMAKE_OBJCOPY} -O binary -j .text bootrom.elf gs_maxion_bootrom.bin)
 set(CONVERT_TO_HEX_CMD xxd -i gs_maxion_bootrom.bin > maxion_bootrom.h)
+
+if(${CMAKE_HOST_APPLE})
+    set(SED_CMD            gsed)
+else()
+    set(SED_CMD            sed)
+endif()
 set(SED_ARG1           s/unsigned/static )
 set(SED_ARG2           unsigned/g )
 ##+ custom command 
@@ -20,7 +26,7 @@ add_custom_target(maxion_boot_rom ALL
                  COMMAND ${CMAKE_C_COMPILER} ${CFLAGS} ${LFLAGS} ${CMAKE_CURRENT_SOURCE_DIR}/bootrom.S -o bootrom.elf
                  COMMAND ${OBJCOPY_CMD}
                  COMMAND ${CONVERT_TO_HEX_CMD}
-                 COMMAND sed -i "${SED_ARG1} ${SED_ARG2}" maxion_bootrom.h
+                 COMMAND ${SED_CMD} -i "${SED_ARG1} ${SED_ARG2}" maxion_bootrom.h
                  VERBATIM
                  BYPRODUCTS ${CMAKE_CURRENT_BINARY_DIR}/maxion_bootrom.h
                  )
