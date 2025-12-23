@@ -3,7 +3,9 @@
  * SPDX-License-Identifier: Apache-2.0
  *-------------------------------------------------------------------------*/
 
+#ifdef ENABLE_PCIEDRIVER
 #include "DevicePcie.h"
+#endif
 #include "DeviceSysEmuMulti.h"
 #include <sw-sysemu/SysEmuOptions.h>
 
@@ -22,8 +24,9 @@ std::unique_ptr<IDeviceLayer> IDeviceLayer::createSysEmuDeviceLayer(std::vector<
   return std::make_unique<DeviceSysEmuMulti>(options);
 }
 
+#ifdef ENABLE_PCIEDRIVER
 std::unique_ptr<IDeviceLayer> IDeviceLayer::createPcieDeviceLayer(bool enableMasterMinion,
                                                                   bool enableServiceProcessor) {
   return std::make_unique<DevicePcie>(enableMasterMinion, enableServiceProcessor);
 }
-
+#endif

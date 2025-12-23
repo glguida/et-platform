@@ -12,6 +12,8 @@ message(STATUS "CMAKE_PREFIX_PATH: ${CMAKE_PREFIX_PATH}")
 
 set(ET_DEFAULT_BUILD_TYPE Release)
 
+option(ENABLE_PCIEDRIVER "Compile DevicePcie support." ON)
+
 option(ENABLE_STRICT_BUILD_TYPES "Whether project configuration should fail if build_type is not one of the allowed values: Debug Release RelWithDebInfo MinSizeRel" ON)
 include(CommonProjectSettings)
 include(GNUInstallDirs)
@@ -48,7 +50,10 @@ if (NOT CMAKE_CXX_VISIBILITY_PRESET IN_LIST VISIBILITY_PRESET_VALUES)
     message(FATAL_ERROR "CMAKE_CXX_VISIBILITY_PRESET must be one of ${VISIBILITY_PRESET_VALUES}")
 endif()
 
-find_package(linuxDriver REQUIRED)
+if (ENABLE_PCIEDRIVER)
+    find_package(linuxDriver REQUIRED)
+endif()
+
 find_package(sw-sysemu REQUIRED)
 find_package(hostUtils REQUIRED)
 find_package(Boost REQUIRED)
@@ -57,7 +62,7 @@ add_library(deviceLayer
     src/DeviceLayer.cpp
     src/DeviceSysEmu.cpp
     src/DeviceSysEmuMulti.cpp
-    src/DevicePcie.cpp
+    $<$<BOOL:${ENABLE_PCIEDRIVER}>:src/DevicePcie.cpp>
     src/SysEmuHostListener.cpp
 )
 
@@ -90,7 +95,7 @@ target_link_libraries(deviceLayer
         hostUtils::debug
     PRIVATE
         hostUtils::logging
-        linuxDriver::linuxDriver
+        $<$<BOOL:${ENABLE_PCIEDRIVER}>:linuxDriver::linuxDriver>
         Boost::boost
 )
 
@@ -144,7 +149,9 @@ endif()
 
 if (ENABLE_TESTS)
     enable_testing()
-    get_target_property(PCIE_DRIVER_INC_DIR linuxDriver::linuxDriver INTERFACE_INCLUDE_DIRECTORIES)
+    if (ENABLE_PCIEDRIVER)
+        get_target_property(PCIE_DRIVER_INC_DIR linuxDriver::linuxDriver INTERFACE_INCLUDE_DIRECTORIES)
+    endif()
     add_subdirectory(tests)
 endif()
 
