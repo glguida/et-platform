@@ -4,7 +4,9 @@
 @PACKAGE_INIT@
 
 include(CMakeFindDependencyMacro)
-find_dependency(linuxDriver REQUIRED)
+if (ENABLE_PCIEDRIVER)
+   find_dependency(linuxDriver REQUIRED)
+endif()
 find_dependency(hostUtils REQUIRED)
 find_dependency(sw-sysemu REQUIRED)
 find_dependency(Boost REQUIRED)
