@@ -1,5 +1,11 @@
 include(ExternalProject)
 
+if(APPLE)
+    set(RPATH_ORIG @loader_path)
+else()
+    set(RPATH_ORIG $ORIG)
+endif()
+
 if(NOT PROJECT_BASE_DIR)
    set(PROJECT_BASE_DIR ".")
 endif()
@@ -43,7 +49,7 @@ function(ThirdParty name url tag cmake_args)
         CMAKE_ARGS
                    -DCMAKE_INSTALL_PREFIX=${STAGING_DIR}
                    -DCMAKE_BUILD_WITH_INSTALL_RPATH=OFF
-                   -DCMAKE_INSTALL_RPATH=$ORIGIN/../lib
+                   -DCMAKE_INSTALL_RPATH=${RPATH_ORIG}/../lib
                    -DCMAKE_BUILD_RPATH=${STAGING_DIR}/lib
                    -DCMAKE_INSTALL_LIBDIR=lib
                    ${args_list}
@@ -66,7 +72,7 @@ function(HostProject name cmake_args)
                    -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
                    -DCMAKE_INSTALL_PREFIX=${STAGING_DIR}
                    -DCMAKE_BUILD_WITH_INSTALL_RPATH=OFF
-                   -DCMAKE_INSTALL_RPATH=$ORIGIN/../lib
+                   -DCMAKE_INSTALL_RPATH=${RPATH_ORIG}/../lib
                    -DCMAKE_BUILD_RPATH=${STAGING_DIR}/lib
                    -DCMAKE_PREFIX_PATH=${STAGING_DIR}
                      -DCMAKE_INSTALL_LIBDIR=lib
@@ -91,7 +97,7 @@ function(HostProjectNoInstall name cmake_args)
                    -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
                    -DCMAKE_INSTALL_PREFIX=${STAGING_DIR}
                    -DCMAKE_BUILD_WITH_INSTALL_RPATH=OFF
-                   -DCMAKE_INSTALL_RPATH=$ORIGIN/../lib
+                   -DCMAKE_INSTALL_RPATH=${RPATH_ORIG}/../lib
                    -DCMAKE_BUILD_RPATH=${STAGING_DIR}/lib
                    -DCMAKE_PREFIX_PATH=${STAGING_DIR}
                        -DCMAKE_INSTALL_LIBDIR=lib
@@ -121,7 +127,7 @@ function(DeviceProject name cmake_args)
                    -DCMAKE_TOOLCHAIN_FILE=${ET_PLATFORM_PATH}/lib/cmake/riscv64-ec-toolchain.cmake
                    -DCMAKE_INSTALL_PREFIX=${STAGING_DIR}
                    -DCMAKE_BUILD_WITH_INSTALL_RPATH=OFF
-                   -DCMAKE_INSTALL_RPATH=$ORIGIN/../lib
+                   -DCMAKE_INSTALL_RPATH=${RPATH_ORIG}/../lib
                    -DCMAKE_BUILD_RPATH=${STAGING_DIR}/lib
                    -DCMAKE_PREFIX_PATH=${STAGING_DIR}
                        -DCMAKE_INSTALL_LIBDIR=lib
@@ -151,7 +157,7 @@ function(DeviceProjectNoInstall name cmake_args)
                    -DCMAKE_TOOLCHAIN_FILE=${ET_PLATFORM_PATH}/lib/cmake/riscv64-ec-toolchain.cmake
                    -DCMAKE_INSTALL_PREFIX=${STAGING_DIR}
                    -DCMAKE_BUILD_WITH_INSTALL_RPATH=OFF
-                   -DCMAKE_INSTALL_RPATH=$ORIGIN/../lib
+                   -DCMAKE_INSTALL_RPATH=${RPATH_ORIG}/../lib
                    -DCMAKE_BUILD_RPATH=${STAGING_DIR}/lib
                    -DCMAKE_INSTALL_LIBDIR=lib
                    -DCMAKE_PREFIX_PATH=${STAGING_DIR}
