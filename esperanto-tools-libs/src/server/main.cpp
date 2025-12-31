@@ -147,7 +147,7 @@ int main(int argc, char* argv[]) {
   std::shared_ptr<dev::IDeviceLayer> deviceLayer;
   auto pid = getpid();
   if (FLAGS_device_type == "pcie") {
-    deviceLayer = dev::IDeviceLayer::createPcieDeviceLayer();
+    //    deviceLayer = dev::IDeviceLayer::createPcieDeviceLayer();
   } else if (FLAGS_device_type == "sysemu") {
     emu::SysEmuOptions opts;
     opts.bootromTrampolineToBL2ElfPath = FLAGS_sysemu_data_folder + kBootRomTrampolineToBl2Elf;

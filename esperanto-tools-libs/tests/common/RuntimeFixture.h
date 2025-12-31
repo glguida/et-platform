@@ -26,9 +26,11 @@ public:
     auto options = rt::getDefaultOptions();
     auto dlCreator = [this] {
       switch (sDlType) {
+#if 0
       case DeviceLayerImp::PCIE:
         RT_LOG(INFO) << "Running tests with PCIE deviceLayer";
         return dev::IDeviceLayer::createPcieDeviceLayer();
+#endif
       case DeviceLayerImp::SYSEMU: {
         RT_LOG(INFO) << "Running tests with SYSEMU deviceLayer. Num devices: " << static_cast<uint32_t>(numDevices_);
         auto opts = getSysemuDefaultOptions();

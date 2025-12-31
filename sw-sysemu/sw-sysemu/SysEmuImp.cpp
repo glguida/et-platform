@@ -115,6 +115,18 @@ void runMain(sys_emu_cmd_options opts, api_communicate* comm, std::exception_ptr
   }
 }
 
+struct pthread_args {
+  sys_emu_cmd_options opts;
+  api_communicate* comm;
+  std::exception_ptr* error;
+};
+
+void *pthread_start(void *arg) {
+  pthread_args *args = static_cast<pthread_args *>(arg);
+  runMain(args->opts, args->comm, args->error);
+  return nullptr;
+}
+
 void iatusPrint(bemu::System* chip) {
   const auto& iatus = chip->memory.pcie0_get_iatus();
 
@@ -394,7 +406,7 @@ SysEmuImp::~SysEmuImp() {
   lock.unlock();
 
   SE_LOG(INFO) << "Waiting for sysemu thread to finish.";
-  sysEmuThread_.join();
+  pthread_join(sysEmuThread_, NULL);
   SE_LOG(INFO) << "Sysemu thread finished.";
   if (sysEmuError_) {
     std::rethrow_exception(sysEmuError_);
@@ -501,7 +513,19 @@ SysEmuImp::SysEmuImp(const SysEmuOptions& options, const std::array<uint64_t, 8>
   opts.tstore_check |= options.tstoreCheck;
   opts.log_path = options.logFile;
 
-  sysEmuThread_ = std::thread(runMain, opts, this, &sysEmuError_); // FIXME Passing `this` like this is dangerous..
+  /*
+    Create the main thread. Use pthread to increase stack size.
+  */
+  pthread_attr_t attr;
+  pthread_attr_init(&attr);
+  pthread_attr_setstacksize(&attr, 8 * 1024 * 1024); // Use 8Mb for sysemu thread stack.
+  pthread_args args = { opts, this, &sysEmuError_ }; // FIXME Passing `this` like this is dangerous..
+  int rc = pthread_create(&sysEmuThread_, &attr, pthread_start, &args);
+  if (rc != 0) {
+    throw std::system_error(rc, std::generic_category(), "pthread_create failed");
+  }
+
+//  sysEmuThread_ = std::thread(runMain, opts, this, &sysEmuError_); 
 
   // Wait until all the iATUs configured by BL2 have been enabled
   auto future = iatusReady_.get_future();

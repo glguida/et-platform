@@ -86,7 +86,7 @@ RuntimeImp::RuntimeImp(std::shared_ptr<dev::IDeviceLayer> const& deviceLayer, Op
     }
   }
 
-  auto maxElementCount = 0UL;
+  uint64_t maxElementCount = 0UL;
   auto totalElementSize = 0UL;
 
   for (auto& d : devices_) {

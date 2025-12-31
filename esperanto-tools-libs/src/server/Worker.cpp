@@ -25,6 +25,9 @@
 #include <sys/uio.h>
 #include <unistd.h>
 #include <variant>
+#ifndef __linux__
+#include <arpa/inet.h>  // for htonl/ntohl
+#endif
 
 using namespace rt;
 
@@ -33,6 +36,60 @@ struct MemStream : public std::streambuf {
     setg(s, s, s + n);
   }
 };
+
+#ifndef __linux__
+// Helper functions for reliable message protocol on macOS (SOCK_STREAM)
+ssize_t writeMessage(int socket, const void* data, size_t size) {
+  // Send length prefix (4 bytes, network byte order)
+  uint32_t msgLen = htonl(static_cast<uint32_t>(size));
+  ssize_t written = 0;
+  
+  // Write length header
+  while (written < sizeof(msgLen)) {
+    ssize_t n = write(socket, reinterpret_cast<const char*>(&msgLen) + written, sizeof(msgLen) - written);
+    if (n <= 0) return n;
+    written += n;
+  }
+  
+  // Write message data
+  written = 0;
+  while (written < static_cast<ssize_t>(size)) {
+    ssize_t n = write(socket, reinterpret_cast<const char*>(data) + written, size - written);
+    if (n <= 0) return n;
+    written += n;
+  }
+  
+  return static_cast<ssize_t>(size);
+}
+
+ssize_t readMessage(int socket, void* buffer, size_t bufferSize) {
+  // Read length prefix
+  uint32_t msgLen;
+  ssize_t totalRead = 0;
+  
+  while (totalRead < sizeof(msgLen)) {
+    ssize_t n = read(socket, reinterpret_cast<char*>(&msgLen) + totalRead, sizeof(msgLen) - totalRead);
+    if (n <= 0) return n;
+    totalRead += n;
+  }
+  
+  msgLen = ntohl(msgLen);
+  if (msgLen > bufferSize) {
+    errno = EMSGSIZE;
+    return -1;
+  }
+  
+  // Read message data
+  totalRead = 0;
+  while (totalRead < static_cast<ssize_t>(msgLen)) {
+    ssize_t n = read(socket, reinterpret_cast<char*>(buffer) + totalRead, msgLen - totalRead);
+    if (n <= 0) return n;
+    totalRead += n;
+  }
+  
+  return static_cast<ssize_t>(msgLen);
+}
+#endif
 
 void Worker::update(EventId event) {
   SpinLock lock(mutex_);
@@ -54,12 +111,28 @@ void Worker::sendResponse(const resp::Response& resp) {
   auto str = response.str();
   EASY_END_BLOCK
   EASY_BLOCK("Write socket")
+#ifdef __linux__
   if (auto res = write(socket_, str.data(), str.size()); res < static_cast<long>(str.size())) {
+#else
+  if (auto res = writeMessage(socket_, str.data(), str.size()); res < static_cast<long>(str.size())) {
+#endif
     auto errorMsg = std::string{strerror(errno)};
     RT_VLOG(LOW) << "Write socket error: " << errorMsg;
     throw NetworkException("Write socket error: " + errorMsg);
   }
+#ifndef __linux__
+  fsync(socket_);
+#endif
 }
+
+#ifdef __APPLE__
+#include <mach/mach.h>
+#include <mach/mach_vm.h>
+// macOS inter-process memory operations require elevated privileges:
+// 1. Run as root, OR
+// 2. Have task_for_pid entitlement in code signing, OR  
+// 3. Disable SIP (System Integrity Protection) for development
+#endif
 
 Worker::Worker(int socket, RuntimeImp& runtime, Server& server, ucred credentials)
   : runtime_(runtime)
@@ -68,12 +141,14 @@ Worker::Worker(int socket, RuntimeImp& runtime, Server& server, ucred credential
   pid_ = getpid();
 
   runtime_.attach(this);
-  cmaCopyFunction_ = [pid = credentials.pid](const std::byte* src, std::byte* dst, size_t size, CmaCopyType type) {
+  pid_t credpid = credentials.pid;
+  cmaCopyFunction_ = [pid = credpid](const std::byte* src, std::byte* dst, size_t size, CmaCopyType type) {
     EASY_BLOCK("CMA copy", profiler::colors::Green)
     iovec local;
     iovec remote;
     local.iov_len = remote.iov_len = size;
 
+#ifdef __linux__
     ssize_t res;
     if (type == CmaCopyType::TO_CMA) {
       remote.iov_base = const_cast<std::byte*>(src);
@@ -84,12 +159,105 @@ Worker::Worker(int socket, RuntimeImp& runtime, Server& server, ucred credential
       remote.iov_base = dst;
       res = process_vm_writev(pid, &local, 1, &remote, 1, 0);
     }
+#else
+    // macOS implementation using Mach VM API
+    // NOTE: Requires elevated privileges (e.g., running as root or with task_for_pid entitlement)
+    ssize_t res = -1;
+    mach_port_t task = MACH_PORT_NULL;
+    
+    kern_return_t kr = task_for_pid(mach_task_self(), pid, &task);
+    if (kr != KERN_SUCCESS) {
+      // Set appropriate errno based on Mach error
+      switch (kr) {
+        case KERN_NO_SPACE:
+        case KERN_RESOURCE_SHORTAGE:
+          errno = ENOMEM;
+          break;
+        case KERN_INVALID_ARGUMENT:
+          errno = EINVAL;
+          break;
+        case KERN_FAILURE:
+        case KERN_PROTECTION_FAILURE:
+        default:
+          errno = EPERM; // Most common: insufficient privileges
+          break;
+      }
+      RT_VLOG(LOW) << "task_for_pid failed for PID " << pid << ": kr=" << kr 
+                   << ". Ensure process has required privileges (root or task_for_pid entitlement).";
+    } else {
+      if (type == CmaCopyType::TO_CMA) {
+        // Read from remote process memory
+        vm_offset_t data = 0;
+        mach_msg_type_number_t data_count = 0;
+        
+        kr = mach_vm_read(task, (mach_vm_address_t)src, size, &data, &data_count);
+        if (kr == KERN_SUCCESS) {
+          if (data_count == size) {
+            memcpy(dst, (void*)data, data_count);
+            res = static_cast<ssize_t>(data_count);
+          } else {
+            RT_VLOG(LOW) << "mach_vm_read returned unexpected size: expected=" << size 
+                         << " actual=" << data_count;
+            errno = EIO; // I/O error for unexpected data size
+          }
+          // Always deallocate the returned data
+          vm_deallocate(mach_task_self(), data, data_count);
+        } else {
+          // Convert Mach error to errno
+          switch (kr) {
+            case KERN_INVALID_ADDRESS:
+              errno = EFAULT;
+              break;
+            case KERN_PROTECTION_FAILURE:
+              errno = EACCES;
+              break;
+            case KERN_NO_SPACE:
+              errno = ENOMEM;
+              break;
+            default:
+              errno = EIO;
+              break;
+          }
+          RT_VLOG(LOW) << "mach_vm_read failed: kr=" << kr << " src=" << std::hex << src 
+                       << " size=" << std::dec << size;
+        }
+      } else {
+        // Write to remote process memory  
+        kr = mach_vm_write(task, (mach_vm_address_t)dst, (vm_offset_t)src, size);
+        if (kr == KERN_SUCCESS) {
+          res = static_cast<ssize_t>(size);
+        } else {
+          // Convert Mach error to errno
+          switch (kr) {
+            case KERN_INVALID_ADDRESS:
+              errno = EFAULT;
+              break;
+            case KERN_PROTECTION_FAILURE:
+              errno = EACCES;
+              break;
+            case KERN_NO_SPACE:
+              errno = ENOMEM;
+              break;
+            default:
+              errno = EIO;
+              break;
+          }
+          RT_VLOG(LOW) << "mach_vm_write failed: kr=" << kr << " dst=" << std::hex << dst 
+                       << " size=" << std::dec << size;
+        }
+      }
+      
+      // Always deallocate the task port
+      mach_port_deallocate(mach_task_self(), task);
+    }
+#endif
+    
     if (res != static_cast<ssize_t>(size)) {
       RT_LOG(WARNING) << "Error copying/writing from/to remote process with PID: " + std::to_string(pid) + " Src: "
                       << std::hex << src << " Dst: " << dst << std::string{" error: "} + strerror(errno);
     }
   };
-  runner_ = std::thread(&Worker::requestProcessor, this, credentials.pid);
+  runner_ = std::thread(&Worker::requestProcessor, this, credpid);
 }
 
 Worker::~Worker() {
@@ -149,7 +317,11 @@ void Worker::requestProcessor(pid_t clientPID) {
       EASY_END_BLOCK
 
       EASY_BLOCK("read")
+#ifdef __linux__
       auto res = read(socket_, requestBuffer.data(), requestBuffer.size());
+#else
+      auto res = readMessage(socket_, requestBuffer.data(), requestBuffer.size());
+#endif
       if (res < 0) {
         auto msg = std::string{"Read socket error: "} + strerror(errno);
         RT_VLOG(LOW) << msg;

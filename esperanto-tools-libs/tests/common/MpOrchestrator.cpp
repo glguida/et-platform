@@ -8,7 +8,7 @@
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include <hostUtils/logging/Logger.h>
-#include <sys/eventfd.h>
+//#include <sys/eventfd.h>
 #include <unistd.h>
 
 namespace {
@@ -23,11 +23,47 @@ enum class Status : uint64_t { INVALID, SERVER_READY, END_SERVER, SERVER_ERROR }
 
 } // namespace
 
+class CrossPlatformEvent {
+public:
+    CrossPlatformEvent() {
+        int fds[2];
+        if (pipe(fds) != 0) {
+            throw std::runtime_error("pipe() failed");
+        }
+        read_fd_ = fds[0];
+        write_fd_ = fds[1];
+    }
+
+    void notify(uint64_t value) {
+        write(write_fd_, &value, sizeof(value));
+    }
+
+    uint64_t wait() {
+        uint64_t value;
+        read(read_fd_, &value, sizeof(value));
+        return value;
+    }
+
+    int getReadFd() const { return read_fd_; }
+    int getWriteFd() const { return write_fd_; }
+
+private:
+    int read_fd_;
+    int write_fd_;
+};
+
 void MpOrchestrator::createServer(const DeviceLayerCreatorFunc& deviceLayerCreator, rt::Options options) {
   RT_LOG_IF(FATAL, server_ != -1) << "Server already created!";
 
-  efdToServer_ = eventfd(0, 0);
-  efdFromServer_ = eventfd(0, 0);
+#ifdef __linux__
+    efdToServer_ = eventfd(0, 0);
+    efdFromServer_ = eventfd(0, 0);
+#else
+    CrossPlatformEvent toServer;
+    CrossPlatformEvent fromServer;
+    efdToServer_ = toServer.getWriteFd();
+    efdFromServer_ = fromServer.getReadFd();
+#endif
 
   if (auto socketPath = getenv("ET_SOCKET_PATH"); socketPath != nullptr) {
     socketPath_ = socketPath;

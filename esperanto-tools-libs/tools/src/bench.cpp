@@ -87,9 +87,11 @@ auto createDeviceLayer() {
   case 1:
     result = dev::IDeviceLayer::createSysEmuDeviceLayer(getDefaultSysemuOptions());
     break;
+#ifdef ENABLE_LINUX_DRIVER
   case 2:
     result = dev::IDeviceLayer::createPcieDeviceLayer();
     break;
+#endif
   case 3:
     // case 3 won't create a devicelayer, it will connect through socket
   default:;

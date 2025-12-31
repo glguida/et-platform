@@ -25,13 +25,14 @@ add_library(benchmarker
 add_library(runtimeTools::benchmarker ALIAS benchmarker)
 target_compile_features(benchmarker PUBLIC cxx_std_17)
 
-add_executable(runKernel src/runKernel.cpp)
-target_include_directories(runKernel PRIVATE ../src)
+find_package(gflags REQUIRED)
+configure_file(src/Constants.h.in ${CMAKE_BINARY_DIR}/src/Constants.h)
+
+add_executable(runKernel src/runKernel.cpp ${CMAKE_BINARY_DIR}/src/Constants.h)
+target_include_directories(runKernel PRIVATE ${CMAKE_BINARY_DIR}/src ../src)
 target_compile_features(runKernel PRIVATE cxx_std_17)
 target_link_libraries(runKernel PRIVATE hostUtils::logging runtime::etrt_static cereal::cereal deviceLayer::deviceLayer)
 
-find_package(gflags REQUIRED)
-configure_file(src/Constants.h.in ${CMAKE_BINARY_DIR}/src/Constants.h)
 add_executable(bench src/bench.cpp ${CMAKE_BINARY_DIR}/src/Constants.h)
 target_include_directories(bench PRIVATE ${CMAKE_BINARY_DIR}/src)
 target_link_libraries(bench PRIVATE gflags::gflags $<$<AND:$<CXX_COMPILER_ID:GNU>,$<VERSION_LESS:$<CXX_COMPILER_VERSION>,9.0.0>>:stdc++fs> benchmarker deviceLayer::deviceLayer nlohmann_json::nlohmann_json)

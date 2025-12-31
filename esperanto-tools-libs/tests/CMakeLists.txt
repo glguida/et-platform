@@ -14,7 +14,6 @@ find_package(EsperantoDeviceMinionRuntime)
 find_package(EsperantoTestKernels)
 
 find_package(gflags REQUIRED)
-find_package(OpenMP REQUIRED)
 
 
 set(COMMON_DIR ${CMAKE_CURRENT_SOURCE_DIR}/common)
@@ -56,7 +55,6 @@ macro(build_test_binary)
             GTest::gtest            
             GTest::gmock
 	    $<$<AND:$<CXX_COMPILER_ID:GNU>,$<VERSION_LESS:$<CXX_COMPILER_VERSION>,9.0.0>>:stdc++fs>
-            OpenMP::OpenMP_CXX
     )
     target_compile_definitions(${TEST_TARGET} 
         PRIVATE

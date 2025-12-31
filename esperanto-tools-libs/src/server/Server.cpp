@@ -14,9 +14,13 @@
 #include <easy/profiler.h>
 #include <hostUtils/threadPool/ThreadPool.h>
 
+#ifdef __linux__
 #include <linux/capability.h>
+#endif
 #include <signal.h>
+#ifdef __linux
 #include <sys/capability.h>
+#endif
 #include <sys/param.h>
 #include <sys/poll.h>
 #include <sys/socket.h>
@@ -48,7 +52,7 @@ Server::~Server() {
 
 Server::Server(const std::string& socketPath, std::shared_ptr<dev::IDeviceLayer> const& deviceLayer, Options options)
   : deviceLayer_{deviceLayer} {
-
+#ifdef __linux__
   cap_t caps;
   std::array<cap_value_t, 1> capList = {CAP_SYS_PTRACE};
   cap_value_t* p_capList = capList.data();
@@ -69,13 +73,21 @@ Server::Server(const std::string& socketPath, std::shared_ptr<dev::IDeviceLayer>
   if (cap_free(caps) == -1) {
     throw Exception("Couldn't free the caps struct. " + std::string{strerror(errno)});
   }
+#endif
   CHECK(deviceLayer_ != nullptr) << "DeviceLayer can't be null";
 
   runtime_ = IRuntime::create(deviceLayer_, options);
   auto profiler = std::make_unique<rt::profiling::RemoteProfiler>();
   runtime_->setProfiler(std::move(profiler));
 
+#if __linux__
   socket_ = socket(AF_UNIX, SOCK_SEQPACKET, 0);
+#else
+  socket_ = socket(AF_UNIX, SOCK_STREAM, 0);
+#endif
+  if (socket_ < 0) {
+    RT_LOG(FATAL) << "Socket error: " << strerror(errno);
+  }
 
   sockaddr_un addr;
   memset(&addr, 0, sizeof(addr));
@@ -125,28 +137,48 @@ void Server::listen() {
       RT_LOG(WARNING) << "Accept error: " << strerror(errno) << ". Ignoring this client connection.";
       continue;
     }
-    if (auto val = kSocketNeededSize; setsockopt(cl, SOL_SOCKET, SO_SNDBUFFORCE, &val, sizeof(val)) < 0) {
+
+#ifdef __linux__
+#define SOCKET_SNDBUFFORCE(_fd, _valp, _valsize) setsockopt((_fd), SOL_SOCKET, SO_SNDBUFFORCE, (_valp), (_valsize))
+#define SOCKET_RCVBUFFORCE(_fd, _valp, _valsize) setsockopt((_fd), SOL_SOCKET, SO_RCVBUFFORCE, (_valp), (_valsize))
+#define SOCKET_PEERCRED(_fd, _ucred) ({ \
+    int val = 1; \
+    if (setsockopt((_fd), SOL_SOCKET, SO_PASSCRED, &val, sizeof(val)) < 0) { \
+      RT_LOG(FATAL) << "Unable to set local passcred: " << strerror(errno) \
+		    << ". Be sure runtime daemon has CAP_SYS_PTRACE capability."; \
+    }									\
+    socklen_t len = sizeof(_ucred);					\
+    if (getsockopt((_fd), SOL_SOCKET, SO_PEERCRED, &(_ucred), &len) == -1) { \
+      RT_LOG(FATAL) << "Unable to get peer credentials: " << strerror(errno) \
+		    << ". Be sure runtime daemon has CAP_SYS_PTRACE capability."; \
+    }									\
+      })
+#else // __APPLE__
+#define SOCKET_SNDBUFFORCE(_fd, _valp, _valsize) setsockopt((_fd), SOL_SOCKET, SO_SNDBUF, (_valp), (_valsize))
+#define SOCKET_RCVBUFFORCE(_fd, _valp, _valsize) setsockopt((_fd), SOL_SOCKET, SO_RCVBUF, (_valp), (_valsize))
+#define SOCKET_PEERCRED(_fd, _ucred) ({					\
+	pid_t pid;							\
+	socklen_t len = sizeof(pid);					\
+	if (getsockopt((_fd), SOL_LOCAL, LOCAL_PEERPID, &pid, &len) == -1) { \
+	  RT_LOG(FATAL) << "Unable to get peer PID: " << strerror(errno); \
+	}								\
+	(_ucred).pid = pid;						\
+      })
+#endif
+
+    if (int val = kSocketNeededSize; SOCKET_SNDBUFFORCE(cl, &val, sizeof(val)) < 0) {
       RT_LOG(FATAL) << "Unable to set send buffer size to required: " << strerror(errno)
-                    << ". Be sure runtime daemon has CAP_NET_ADMIN capability.";
+		    << ". Be sure runtime daemon has appropriate permissions.";
     }
-
-    if (auto val = kSocketNeededSize; setsockopt(cl, SOL_SOCKET, SO_RCVBUFFORCE, &val, sizeof(val)) < 0) {
+ 
+    if (int val = kSocketNeededSize; SOCKET_RCVBUFFORCE(cl, &val, sizeof(val)) < 0) {
       RT_LOG(FATAL) << "Unable to set receive buffer size to required: " << strerror(errno)
-                    << ". Be sure runtime daemon has CAP_NET_ADMIN capability.";
+		    << ". Be sure runtime daemon has appropriate permissions.";
     }
 
-    if (int val = 1; setsockopt(cl, SOL_SOCKET, SO_PASSCRED, &val, sizeof(val)) < 0) {
-      RT_LOG(FATAL) << "Unable to set local passcred: " << strerror(errno)
-                    << ". Be sure runtime daemon has CAP_SYS_PTRACE capability.";
-    }
-    socklen_t len = sizeof(ucred);
     ucred credentials;
-    if (getsockopt(cl, SOL_SOCKET, SO_PEERCRED, &credentials, &len) == -1) {
-      RT_LOG(FATAL) << "Unable to get peer credentials: " << strerror(errno)
-                    << ". Be sure runtime daemon has CAP_SYS_PTRACE capability.";
-    }
-    RT_LOG(INFO) << " New client connection established from PID: " << credentials.pid << "(UID: " << credentials.uid
-                 << " GID: " << credentials.gid << ").";
+    SOCKET_PEERCRED(cl, credentials);
+    RT_LOG(INFO) << "New client connection established from PID: " << credentials.pid << ".";
 
     // delegate the request processing for this client to a worker
     SpinLock lock(mutex_);

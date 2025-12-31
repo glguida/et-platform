@@ -44,7 +44,7 @@ public:
 
 private:
   inline void registerThread();
-  std::string getThreadName(std::thread::id threadId);
+  std::string getThreadName(unsigned long long threadId);
 
   Worker* getWorker(StreamId streamId);
 
@@ -64,11 +64,11 @@ private:
   std::unordered_map<EventId, ProfileEvent> earlyProfilingEvents_;
 
   std::mutex threadIdNamesMutex_;
-  std::unordered_map<std::thread::id, std::string> threadIdNames_;
+  std::unordered_map<unsigned long long, std::string> threadIdNames_;
 
   std::mutex workerAccessedThreadsMutex_;
   // For each worker, the ID of each thread that has emited an event and wether it has already been identified
-  std::unordered_map<Worker*, std::unordered_map<std::thread::id, bool>> workerAccessedThreads_;
+  std::unordered_map<Worker*, std::unordered_map<unsigned long long, bool>> workerAccessedThreads_;
 
   static thread_local Worker* threadsWorker_;
 };

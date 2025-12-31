@@ -14,7 +14,7 @@
 #include <future>
 #include <mutex>
 #include <queue>
-#include <thread>
+#include <pthread.h>
 
 namespace emu {
 class SysEmuImp : public ISysEmu, public api_communicate {
@@ -51,7 +51,7 @@ public:
 
 private:
   bemu::System* chip_ = nullptr;
-  std::thread sysEmuThread_;
+  pthread_t sysEmuThread_;
   std::exception_ptr sysEmuError_ = nullptr;
   bemu::Noagent agent_{chip_, "SysEmuImp"};
 

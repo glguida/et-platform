@@ -189,7 +189,7 @@ std::string ProfileEvent::getThreadId() const {
 ProfileEvent::ExtraMetadata ProfileEvent::getExtras() const {
   return extra_;
 }
-std::thread::id ProfileEvent::getNumericThreadId() const {
+unsigned long long ProfileEvent::getNumericThreadId() const {
   return numericThreadId_;
 }
 
@@ -279,7 +279,7 @@ void ProfileEvent::setClass(Class c) {
 void ProfileEvent::setTimeStamp(TimePoint t) {
   timeStamp_ = t;
 }
-void ProfileEvent::setThreadId(std::thread::id id) {
+void ProfileEvent::setThreadId(unsigned long long id) {
   numericThreadId_ = id;
 
   std::stringstream ss;

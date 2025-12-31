@@ -168,7 +168,7 @@ void RemoteProfiler::recordResponseProfilingEvent(EventId eventId, const Profile
 }
 
 inline void RemoteProfiler::registerThread() {
-  auto threadId = std::this_thread::get_id();
+  auto threadId = ThreadId::current();
 
   SpinLock lock(threadIdNamesMutex_);
   auto it = threadIdNames_.find(threadId);
@@ -177,8 +177,8 @@ inline void RemoteProfiler::registerThread() {
   }
 }
 
-std::string RemoteProfiler::getThreadName(std::thread::id threadId) {
-  if (threadId == std::this_thread::get_id()) {
+std::string RemoteProfiler::getThreadName(unsigned long long threadId) {
+  if (threadId == ThreadId::current()) {
     return threadName_;
   }
 

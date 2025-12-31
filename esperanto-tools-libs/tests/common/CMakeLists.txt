@@ -19,5 +19,5 @@ target_include_directories(test_utils
     INTERFACE $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
     PRIVATE ${ETRT_INCLUDE_DIRS}
 )
-target_link_libraries(test_utils PRIVATE runtime::etrt_static cereal::cereal deviceLayer::deviceLayer)
+target_link_libraries(test_utils PRIVATE runtime::etrt_static cereal::cereal deviceLayer::deviceLayer GTest::gmock)
 configure_file(Constants.h.in Constants.h)

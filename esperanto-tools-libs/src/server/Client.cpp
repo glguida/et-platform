@@ -26,6 +26,9 @@
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <unistd.h>
+#ifndef __linux__
+#include <arpa/inet.h>  // for htonl/ntohl
+#endif
 
 using namespace rt;
 using namespace std::chrono_literals;
@@ -46,6 +49,60 @@ struct MemStream : public std::streambuf {
   }
 };
 
+#ifndef __linux__
+// Helper functions for reliable message protocol on macOS (SOCK_STREAM)
+ssize_t writeMessage(int socket, const void* data, size_t size) {
+  // Send length prefix (4 bytes, network byte order)
+  uint32_t msgLen = htonl(static_cast<uint32_t>(size));
+  ssize_t written = 0;
+  
+  // Write length header
+  while (written < sizeof(msgLen)) {
+    ssize_t n = write(socket, reinterpret_cast<const char*>(&msgLen) + written, sizeof(msgLen) - written);
+    if (n <= 0) return n;
+    written += n;
+  }
+  
+  // Write message data
+  written = 0;
+  while (written < static_cast<ssize_t>(size)) {
+    ssize_t n = write(socket, reinterpret_cast<const char*>(data) + written, size - written);
+    if (n <= 0) return n;
+    written += n;
+  }
+  
+  return static_cast<ssize_t>(size);
+}
+
+ssize_t readMessage(int socket, void* buffer, size_t bufferSize) {
+  // Read length prefix
+  uint32_t msgLen;
+  ssize_t totalRead = 0;
+  
+  while (totalRead < sizeof(msgLen)) {
+    ssize_t n = read(socket, reinterpret_cast<char*>(&msgLen) + totalRead, sizeof(msgLen) - totalRead);
+    if (n <= 0) return n;
+    totalRead += n;
+  }
+  
+  msgLen = ntohl(msgLen);
+  if (msgLen > bufferSize) {
+    errno = EMSGSIZE;
+    return -1;
+  }
+  
+  // Read message data
+  totalRead = 0;
+  while (totalRead < static_cast<ssize_t>(msgLen)) {
+    ssize_t n = read(socket, reinterpret_cast<char*>(buffer) + totalRead, msgLen - totalRead);
+    if (n <= 0) return n;
+    totalRead += n;
+  }
+  
+  return static_cast<ssize_t>(msgLen);
+}
+#endif
+
 } // namespace
 
 void Client::doSetOnStreamErrorsCallback(std::function<void(EventId, StreamError const&)> callback) {
@@ -65,7 +122,11 @@ Client::~Client() {
 }
 
 Client::Client(const std::string& socketPath) {
+#ifdef __linux__
   socket_ = socket(AF_UNIX, SOCK_SEQPACKET, 0);
+#else
+  socket_ = socket(AF_UNIX, SOCK_STREAM, 0);
+#endif
 
   sockaddr_un addr;
   memset(&addr, 0, sizeof(addr));
@@ -73,20 +134,26 @@ Client::Client(const std::string& socketPath) {
   RT_LOG(INFO) << "Connecting to socket " << socketPath;
   strncpy(addr.sun_path, socketPath.c_str(), sizeof(addr.sun_path) - 1);
 
+#ifdef __linux__
   if (int val = 1; setsockopt(socket_, SOL_SOCKET, SO_PASSCRED, &val, sizeof(val)) == -1) {
     throw NetworkException(std::string{"unable to set local per credentials: "} + strerror(errno));
   }
+#endif
 
   connect(addr);
 
   ucred ucred;
+#ifdef __linux__
   if (socklen_t len = sizeof(ucred); getsockopt(socket_, SOL_SOCKET, SO_PEERCRED, &ucred, &len) == -1) {
+#else
+    if (socklen_t len = sizeof(pid_t); getsockopt(socket_, SOL_LOCAL, LOCAL_PEERPID, &ucred.pid, &len) == -1) {
+#endif
     throw NetworkException(std::string{"getsockopt error: "} + strerror(errno));
   }
+  
 
   RT_LOG(INFO) << "Runtime client connection: (PID:  " << getpid()
-               << ") ===> Credentials from SO_PEERCRED (server credentials): pid=" << ucred.pid
-               << ", euid=" << ucred.uid << ", egid=" << ucred.gid;
+               << ") ===> Credentials from SO_PEERCRED (server credentials): pid=" << ucred.pid;
 
   listener_ = std::thread(&Client::responseProcessor, this);
   handShake();
@@ -166,7 +233,11 @@ void Client::responseProcessor() {
         continue;
       }
 
+#ifdef __linux__
       if (auto res = read(socket_, requestBuffer.data(), requestBuffer.size()); running_) {
+#else
+      if (auto res = readMessage(socket_, requestBuffer.data(), requestBuffer.size()); running_) {
+#endif
         EASY_BLOCK("Client::responseProcessor::read")
         RT_VLOG(LOW) << "Reading response ...";
 
@@ -283,11 +354,18 @@ void Client::sendRequest(const req::Request& request) {
   }
   responseWaiters_[request.id_] = std::make_unique<Waiter>();
   EASY_BLOCK("Write socket")
+#ifdef __linux__
   if (auto res = write(socket_, str.data(), str.size()); res < static_cast<long>(str.size())) {
+#else
+  if (auto res = writeMessage(socket_, str.data(), str.size()); res < static_cast<long>(str.size())) {
+#endif
     auto errorMsg = std::string{strerror(errno)};
     RT_VLOG(LOW) << "Write socket error: " << errorMsg;
     throw NetworkException("Write socket error: " + errorMsg);
   }
+#ifndef __linux__
+  fsync(socket_);
+#endif
 }
 
 resp::Response::Payload_t Client::waitForResponse(req::Id req) {

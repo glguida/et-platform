@@ -49,9 +49,14 @@ set(LIB_INSTALL_DIR  ${CMAKE_INSTALL_PREFIX}/lib/  CACHE STRING "Library install
 # System dependencies
 find_package(cereal REQUIRED)
 find_package(gflags REQUIRED)
-find_package(libcap REQUIRED)
-find_package(easy_profiler REQUIRED)  
+find_package(easy_profiler REQUIRED)
 
+if (APPLE)
+   set(LIBCAP "")
+else()
+   find_package(libcap REQUIRED)
+   set(LIBCAP "libcap::libcap")
+endif()
 
 if (NOT TARGET easy_profiler)
   add_library(easy_profiler ALIAS easy_profiler::easy_profiler)
@@ -148,7 +153,7 @@ function(etrt_add_library)
             deviceApi::deviceApi
         PRIVATE
             easy_profiler
-            libcap::libcap
+	    ${LIBCAP}
             cereal::cereal
             deviceLayer::deviceLayer
             hostUtils::logging
@@ -189,7 +194,7 @@ target_compile_definitions(server
 )
     
 ## Install library targets (new)
-install(TARGETS etrt etrt_static server
+install(TARGETS etrt etrt_static server 
     EXPORT runtimeTargets
     RUNTIME       DESTINATION ${CMAKE_INSTALL_BINDIR}
     LIBRARY       DESTINATION ${CMAKE_INSTALL_LIBDIR}
@@ -202,6 +207,7 @@ install(EXPORT runtimeTargets
     DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/runtime
     NAMESPACE runtime::
 )
+
 
 ## project documentation
 if (BUILD_DOCS)

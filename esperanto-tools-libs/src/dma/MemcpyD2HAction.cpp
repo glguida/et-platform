@@ -32,7 +32,7 @@ bool MemcpyD2HAction::update() {
   }
 
   auto currentSize =
-    std::min(std::min(availableBytes, size_ - pos_), ctx_.dmaInfo_.maxElementSize_ * ctx_.dmaInfo_.maxElementCount_);
+    std::min((uint64_t)std::min(availableBytes, size_ - pos_), ctx_.dmaInfo_.maxElementSize_ * ctx_.dmaInfo_.maxElementCount_);
   auto cmaPtr = ctx_.cmaManager_.alloc(currentSize);
 
   auto cmdEvt = getNextId(ctx_);

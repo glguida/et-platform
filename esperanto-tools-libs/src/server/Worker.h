@@ -12,6 +12,12 @@
 #include <sys/socket.h>
 #include <thread>
 
+#ifdef __APPLE__
+typedef struct {
+  pid_t pid;
+} ucred;
+#endif
+
 namespace rt {
 
 class Server;

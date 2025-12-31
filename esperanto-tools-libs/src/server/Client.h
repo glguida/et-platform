@@ -13,6 +13,12 @@
 
 struct sockaddr_un;
 
+#ifdef __APPLE__
+typedef struct {
+  pid_t pid;
+} ucred;
+#endif
+
 namespace rt {
 class Client : public IRuntime, public IMonitor {
 public:

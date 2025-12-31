@@ -23,6 +23,42 @@
 #include <unordered_map>
 #include <variant>
 
+#if defined(__linux__)
+  #include <unistd.h>
+  #include <sys/syscall.h>
+#elif defined(__APPLE__)
+  #include <mach/mach.h>
+#else
+  #error "Unsupported platform"
+#endif
+
+struct ThreadId {
+  uint64_t id;
+
+  static unsigned long long current() {
+#if defined(__linux__)
+    return static_cast<unsigned long long>(::syscall(SYS_gettid));
+#elif defined(__APPLE__)
+    return static_cast<unsigned long long>(::mach_thread_self());
+#endif
+  }
+
+  std::string to_string() const {
+    return std::to_string(id);
+  }
+
+  static ThreadId from_string(const std::string& s) {
+    return ThreadId{ std::stoull(s) };
+  }
+
+  unsigned long long numeric() const {
+    return static_cast<unsigned long long>(id);
+  }
+
+  bool operator==(const ThreadId& other) const { return id == other.id; }
+  bool operator!=(const ThreadId& other) const { return id != other.id; }
+};
+
 /// \defgroup runtime_profiler_api Runtime Profiler API
 ///
 /// The runtime profiler API allows to gather profiling data from runtime execution.
@@ -114,7 +150,7 @@ public:
   std::string getThreadId() const;
   ExtraMetadata getExtras() const;
 
-  std::thread::id getNumericThreadId() const;
+  unsigned long long getNumericThreadId() const;
 
   static constexpr std::string_view kVersion = "version";
   static constexpr std::string_view kDuration = "duration";
@@ -171,7 +207,7 @@ public:
   void setType(Type t);
   void setClass(Class c);
   void setTimeStamp(TimePoint t = Clock::now());
-  void setThreadId(std::thread::id id = std::this_thread::get_id());
+  void setThreadId(unsigned long long id = ThreadId::current());
   void setExtras(ExtraMetadata extras);
 
   void setDuration(Duration d);
@@ -212,7 +248,7 @@ private:
   Type type_;
   Class class_;
 
-  std::thread::id numericThreadId_;
+  unsigned long long numericThreadId_;
 };
 } // end namespace profiling
 } // end namespace rt
@@ -251,7 +287,7 @@ template <class Archive> void load(Archive& ar, ProfileEvent& evt) {
 
   std::string threadId;
   ar(cereal::make_nvp(ProfileEvent::kThreadId, threadId));
-  auto tid = std::thread::id(std::stoull(threadId));
+  auto tid = std::stoull(threadId);
   evt.setThreadId(tid);
 
   ProfileEvent::ExtraMetadata extra;

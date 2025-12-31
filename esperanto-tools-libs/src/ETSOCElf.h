@@ -20,7 +20,15 @@
 #include <tuple>
 #include <vector>
 
+#ifdef __linux__
 #include <linux/elf.h>
+#else
+#include <elfio/elf_types.hpp>
+#define NT_PRSTATUS  0x00000001
+#define NT_PRPSINFO  0x00000003
+#define NT_SIGINFO   0x53494749
+#endif
+
 #include <signal.h>
 #include <string.h>
 #include <sys/types.h>
