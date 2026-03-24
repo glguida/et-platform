@@ -59,13 +59,16 @@ target_link_libraries(barrier_launcher
         etsoc_gpsdk
 )
 
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(FFTW3F REQUIRED fftw3f)
+
 add_executable(fft_launcher src/fft_launcher/FFTLauncher.cpp)
 target_include_directories(fft_launcher PRIVATE ${DEVICE_KERNELS_DIR}/fftKernel/include)
 target_compile_definitions(fft_launcher PRIVATE FFT_VERIFICATION)
 target_link_libraries(fft_launcher 
     PRIVATE
         etsoc_gpsdk
-        FFTW3::fftw3f
+        ${FFTW3F_LIBRARIES}
 )
 
 add_executable(multiKernel_launcher src/multi_kernel/multiKernel.cpp)
